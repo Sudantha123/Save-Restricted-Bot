@@ -7,6 +7,12 @@ import time
 import os
 import threading
 import json
+import asyncio
+import logging
+
+# Set up logging to suppress warnings
+logging.basicConfig(level=logging.ERROR)
+logging.getLogger("pyrogram").setLevel(logging.ERROR)
 
 with open('config.json', 'r') as f: DATA = json.load(f)
 def getenv(var): return os.environ.get(var) or DATA.get(var, None)
@@ -71,13 +77,20 @@ def progress(current, total, message, type):
 # start command
 @bot.on_message(filters.command(["start"]))
 def send_start(client: pyrogram.client.Client, message: pyrogram.types.messages_and_media.message.Message):
-	bot.send_message(message.chat.id, f"__👋 Hi **{message.from_user.mention}**, I am Save Restricted Bot, I can send you restricted content by it's post link__\n\n{USAGE}",
-	reply_markup=InlineKeyboardMarkup([[ InlineKeyboardButton("🌐 Source Code", url="https://github.com/bipinkrish/Save-Restricted-Bot")]]), reply_to_message_id=message.id)
+	try:
+		bot.send_message(message.chat.id, f"__👋 Hi **{message.from_user.mention}**, I am Save Restricted Bot, I can send you restricted content by it's post link__\n\n{USAGE}",
+		reply_markup=InlineKeyboardMarkup([[ InlineKeyboardButton("🌐 Source Code", url="https://github.com/bipinkrish/Save-Restricted-Bot")]]), reply_to_message_id=message.id)
+	except Exception as e:
+		print(f"Error in start command: {e}")
 
 
 @bot.on_message(filters.text)
 def save(client: pyrogram.client.Client, message: pyrogram.types.messages_and_media.message.Message):
-	print(message.text)
+	try:
+		print(message.text)
+	except Exception as e:
+		print(f"Error processing message: {e}")
+		return
 
 	# joining chats
 	if "https://t.me/+" in message.text or "https://t.me/joinchat/" in message.text:
@@ -288,4 +301,14 @@ __note that space in between doesn't matter__
 
 
 # infinty polling
-bot.run()
+if __name__ == "__main__":
+    try:
+        bot.run()
+    except KeyboardInterrupt:
+        print("Bot stopped by user")
+    except Exception as e:
+        print(f"Bot error: {e}")
+        try:
+            asyncio.get_event_loop().close()
+        except:
+            pass
