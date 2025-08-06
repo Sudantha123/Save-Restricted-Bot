@@ -26,10 +26,9 @@ ss = getenv("STRING")
 if ss is not None:
 	try:
 		acc = Client("myacc" ,api_id=api_id, api_hash=api_hash, session_string=ss)
-		acc.start()
-		print("User client started successfully")
+		print("User client created successfully")
 	except Exception as e:
-		print(f"Failed to start user client: {e}")
+		print(f"Failed to create user client: {e}")
 		acc = None
 else: 
 	acc = None
@@ -129,9 +128,11 @@ def save(client: pyrogram.client.Client, message: pyrogram.types.messages_and_me
 					bot.send_message(message.chat.id,f"**String Session is not Set**", reply_to_message_id=message.id)
 					return
 				
-				handle_private(message,chatid,msgid)
-				# try: handle_private(message,chatid,msgid)
-				# except Exception as e: bot.send_message(message.chat.id,f"**Error** : __{e}__", reply_to_message_id=message.id)
+				try: 
+					handle_private(message,chatid,msgid)
+				except Exception as e: 
+					print(f"Error handling private message: {e}")
+					bot.send_message(message.chat.id,f"**Error** : __{e}__", reply_to_message_id=message.id)
 			
 			# bot
 			elif "https://t.me/b/" in message.text:
@@ -151,12 +152,22 @@ def save(client: pyrogram.client.Client, message: pyrogram.types.messages_and_me
 				except UsernameNotOccupied: 
 					bot.send_message(message.chat.id,f"**The username is not occupied by anyone**", reply_to_message_id=message.id)
 					return
+				except Exception as e:
+					print(f"Error getting public message: {e}")
+					if acc is None:
+						bot.send_message(message.chat.id,f"**String Session is not Set**", reply_to_message_id=message.id)
+						return
+					try: handle_private(message,username,msgid)
+					except Exception as e2: bot.send_message(message.chat.id,f"**Error** : __{e2}__", reply_to_message_id=message.id)
+					continue
+					
 				try:
 					if '?single' not in message.text:
 						bot.copy_message(message.chat.id, msg.chat.id, msg.id, reply_to_message_id=message.id)
 					else:
 						bot.copy_media_group(message.chat.id, msg.chat.id, msg.id, reply_to_message_id=message.id)
-				except:
+				except Exception as copy_error:
+					print(f"Error copying message: {copy_error}")
 					if acc is None:
 						bot.send_message(message.chat.id,f"**String Session is not Set**", reply_to_message_id=message.id)
 						return
@@ -169,6 +180,7 @@ def save(client: pyrogram.client.Client, message: pyrogram.types.messages_and_me
 
 # handle private
 def handle_private(message: pyrogram.types.messages_and_media.message.Message, chatid: int, msgid: int):
+	try:
 		msg: pyrogram.types.messages_and_media.message.Message = acc.get_messages(chatid,msgid)
 		msg_type = get_message_type(msg)
 
@@ -180,7 +192,9 @@ def handle_private(message: pyrogram.types.messages_and_media.message.Message, c
 		dosta = threading.Thread(target=lambda:downstatus(f'{message.id}downstatus.txt',smsg),daemon=True)
 		dosta.start()
 		file = acc.download_media(msg, progress=progress, progress_args=[message,"down"])
-		os.remove(f'{message.id}downstatus.txt')
+		
+		if os.path.exists(f'{message.id}downstatus.txt'):
+			os.remove(f'{message.id}downstatus.txt')
 
 		upsta = threading.Thread(target=lambda:upstatus(f'{message.id}upstatus.txt',smsg),daemon=True)
 		upsta.start()
@@ -208,11 +222,15 @@ def handle_private(message: pyrogram.types.messages_and_media.message.Message, c
 			bot.send_sticker(message.chat.id, file, reply_to_message_id=message.id)
 
 		elif "Voice" == msg_type:
+			try:
+				thumb = acc.download_media(msg.voice.thumbs[0].file_id) if hasattr(msg.voice, 'thumbs') and msg.voice.thumbs else None
+			except: thumb = None
 			bot.send_voice(message.chat.id, file, caption=msg.caption, thumb=thumb, caption_entities=msg.caption_entities, reply_to_message_id=message.id, progress=progress, progress_args=[message,"up"])
+			if thumb != None: os.remove(thumb)
 
 		elif "Audio" == msg_type:
 			try:
-				thumb = acc.download_media(msg.audio.thumbs[0].file_id)
+				thumb = acc.download_media(msg.audio.thumbs[0].file_id) if hasattr(msg.audio, 'thumbs') and msg.audio.thumbs else None
 			except: thumb = None
 				
 			bot.send_audio(message.chat.id, file, caption=msg.caption, caption_entities=msg.caption_entities, reply_to_message_id=message.id, progress=progress, progress_args=[message,"up"])   
@@ -221,9 +239,15 @@ def handle_private(message: pyrogram.types.messages_and_media.message.Message, c
 		elif "Photo" == msg_type:
 			bot.send_photo(message.chat.id, file, caption=msg.caption, caption_entities=msg.caption_entities, reply_to_message_id=message.id)
 
-		os.remove(file)
-		if os.path.exists(f'{message.id}upstatus.txt'): os.remove(f'{message.id}upstatus.txt')
+		if os.path.exists(file):
+			os.remove(file)
+		if os.path.exists(f'{message.id}upstatus.txt'): 
+			os.remove(f'{message.id}upstatus.txt')
 		bot.delete_messages(message.chat.id,[smsg.id])
+		
+	except Exception as e:
+		print(f"Error in handle_private: {e}")
+		raise e
 
 
 # get the type of message
@@ -300,15 +324,45 @@ __note that space in between doesn't matter__
 """
 
 
-# infinty polling
+async def start_clients():
+	"""Start both bot and user client"""
+	try:
+		await bot.start()
+		print("Bot client started successfully")
+		
+		if acc is not None:
+			await acc.start()
+			print("User client started successfully")
+	except Exception as e:
+		print(f"Error starting clients: {e}")
+
+async def stop_clients():
+	"""Stop both clients properly"""
+	try:
+		if acc is not None:
+			await acc.stop()
+			print("User client stopped")
+		await bot.stop()
+		print("Bot client stopped")
+	except Exception as e:
+		print(f"Error stopping clients: {e}")
+
+# main execution
+async def main():
+	try:
+		await start_clients()
+		await pyrogram.idle()
+	except KeyboardInterrupt:
+		print("Bot stopped by user")
+	except Exception as e:
+		print(f"Bot error: {e}")
+	finally:
+		await stop_clients()
+
 if __name__ == "__main__":
-    try:
-        bot.run()
-    except KeyboardInterrupt:
-        print("Bot stopped by user")
-    except Exception as e:
-        print(f"Bot error: {e}")
-        try:
-            asyncio.get_event_loop().close()
-        except:
-            pass
+	try:
+		asyncio.run(main())
+	except KeyboardInterrupt:
+		print("Program interrupted")
+	except Exception as e:
+		print(f"Program error: {e}")
