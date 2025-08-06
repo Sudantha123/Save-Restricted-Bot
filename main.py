@@ -18,9 +18,15 @@ bot = Client("mybot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
 
 ss = getenv("STRING")
 if ss is not None:
-	acc = Client("myacc" ,api_id=api_id, api_hash=api_hash, session_string=ss)
-	acc.start()
-else: acc = None
+	try:
+		acc = Client("myacc" ,api_id=api_id, api_hash=api_hash, session_string=ss)
+		acc.start()
+		print("User client started successfully")
+	except Exception as e:
+		print(f"Failed to start user client: {e}")
+		acc = None
+else: 
+	acc = None
 
 # download status
 def downstatus(statusfile,message):
